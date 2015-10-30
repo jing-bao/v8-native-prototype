@@ -9,11 +9,62 @@
 #include "src/simulator.h"
 
 // TODO(titzer): wasm-module shouldn't need anything from the compiler.
+#include "src/compiler/change-lowering.h"
 #include "src/compiler/common-operator.h"
 #include "src/compiler/js-graph.h"
 #include "src/compiler/pipeline.h"
 #include "src/compiler/machine-operator.h"
+#include "src/compiler/graph-trimmer.h"
+#include "src/compiler/zone-pool.h"
 
+#include "src/compiler/ast-graph-builder.h"
+#include "src/compiler/ast-loop-assignment-analyzer.h"
+#include "src/compiler/basic-block-instrumentor.h"
+#include "src/compiler/branch-elimination.h"
+#include "src/compiler/bytecode-graph-builder.h"
+#include "src/compiler/change-lowering.h"
+#include "src/compiler/code-generator.h"
+#include "src/compiler/common-operator-reducer.h"
+#include "src/compiler/control-flow-optimizer.h"
+#include "src/compiler/dead-code-elimination.h"
+#include "src/compiler/frame-elider.h"
+#include "src/compiler/graph-replay.h"
+#include "src/compiler/graph-trimmer.h"
+#include "src/compiler/graph-visualizer.h"
+#include "src/compiler/greedy-allocator.h"
+#include "src/compiler/instruction.h"
+#include "src/compiler/instruction-selector.h"
+#include "src/compiler/js-builtin-reducer.h"
+#include "src/compiler/js-context-relaxation.h"
+#include "src/compiler/js-context-specialization.h"
+#include "src/compiler/js-frame-specialization.h"
+#include "src/compiler/js-generic-lowering.h"
+#include "src/compiler/js-inlining-heuristic.h"
+#include "src/compiler/js-intrinsic-lowering.h"
+#include "src/compiler/js-native-context-specialization.h"
+#include "src/compiler/js-typed-lowering.h"
+#include "src/compiler/jump-threading.h"
+#include "src/compiler/live-range-separator.h"
+#include "src/compiler/load-elimination.h"
+#include "src/compiler/loop-analysis.h"
+#include "src/compiler/loop-peeling.h"
+#include "src/compiler/machine-operator-reducer.h"
+#include "src/compiler/move-optimizer.h"
+#include "src/compiler/osr.h"
+#include "src/compiler/pipeline-statistics.h"
+#include "src/compiler/register-allocator.h"
+#include "src/compiler/register-allocator-verifier.h"
+#include "src/compiler/schedule.h"
+#include "src/compiler/scheduler.h"
+#include "src/compiler/select-lowering.h"
+#include "src/compiler/simplified-lowering.h"
+#include "src/compiler/simplified-operator.h"
+#include "src/compiler/simplified-operator-reducer.h"
+#include "src/compiler/tail-call-optimization.h"
+#include "src/compiler/typer.h"
+#include "src/compiler/value-numbering-reducer.h"
+#include "src/compiler/verifier.h"
+#include "src/compiler/zone-pool.h"
 #include "src/wasm/ast-decoder.h"
 #include "src/wasm/tf-builder.h"
 #include "src/wasm/module-decoder.h"
@@ -213,6 +264,59 @@ Handle<Code> CompileFunction(ErrorThrower& thrower,
     return Handle<Code>::null();
   }
 
+  compiler::ZonePool zone_pool;
+  // SimplifiedLoweringPhase
+  {
+    compiler::ZonePool::Scope zone_scope(&zone_pool);
+    Zone* temp_zone = zone_scope.zone();
+    compiler::GraphReducer graph_reducer(temp_zone, &graph, jsgraph.Dead());
+    /*compiler::SimplifiedLowering lowering(&jsgraph(), temp_zone,
+                                data->source_positions());
+    lowering.LowerAllNodes();*/
+    compiler::DeadCodeElimination dead_code_elimination(&graph_reducer, &graph, &common);
+    compiler::SimplifiedOperatorReducer simple_reducer(&jsgraph);
+    compiler::ValueNumberingReducer value_numbering(temp_zone);
+    compiler::MachineOperatorReducer machine_reducer(&jsgraph);
+    compiler::CommonOperatorReducer common_reducer(&graph_reducer, &graph,
+                                         &common, &machine);
+    graph_reducer.AddReducer(&dead_code_elimination);
+    graph_reducer.AddReducer(&simple_reducer);
+    graph_reducer.AddReducer(&value_numbering);
+    graph_reducer.AddReducer(&machine_reducer);
+    graph_reducer.AddReducer(&common_reducer);
+    graph_reducer.ReduceGraph();
+  }
+
+  // GenericLoweringPhase
+  {
+    compiler::ZonePool::Scope zone_scope(&zone_pool);
+    Zone* temp_zone = zone_scope.zone();
+    compiler::GraphReducer graph_reducer(temp_zone, &graph, jsgraph.Dead());
+    compiler::JSContextRelaxation context_relaxing;
+    compiler::DeadCodeElimination dead_code_elimination(&graph_reducer, &graph, &common);
+    compiler::CommonOperatorReducer common_reducer(&graph_reducer, &graph,
+                                         &common, &machine);
+    compiler::JSGenericLowering generic_lowering(true, &jsgraph);
+    compiler::SelectLowering select_lowering(&graph, &common);
+    compiler::TailCallOptimization tco(&common, &graph);
+    graph_reducer.AddReducer(&context_relaxing);
+    graph_reducer.AddReducer(&dead_code_elimination);
+    graph_reducer.AddReducer(&common_reducer);
+    graph_reducer.AddReducer(&generic_lowering);
+    graph_reducer.AddReducer(&select_lowering);
+    graph_reducer.AddReducer(&tco);
+    graph_reducer.ReduceGraph();
+  }
+
+  // LateGraphTrimmingPhase
+  {
+    compiler::ZonePool::Scope zone_scope(&zone_pool);
+    Zone* temp_zone = zone_scope.zone();
+    compiler::GraphTrimmer trimmer(temp_zone, &graph);
+    compiler::NodeVector roots(temp_zone);
+    jsgraph.GetCachedNodes(&roots);
+    trimmer.TrimGraph(roots.begin(), roots.end());
+  }
   // Run the compiler pipeline to generate machine code.
   compiler::CallDescriptor* descriptor = const_cast<compiler::CallDescriptor*>(
       module_env->GetWasmCallDescriptor(&zone, function.sig));
