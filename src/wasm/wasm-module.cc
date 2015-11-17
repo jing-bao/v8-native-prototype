@@ -336,7 +336,12 @@ Handle<Code> CompileFunction(ErrorThrower& thrower,
   // Run the compiler pipeline to generate machine code.
   compiler::CallDescriptor* descriptor = const_cast<compiler::CallDescriptor*>(
       module_env->GetWasmCallDescriptor(&zone, function.sig));
-  CompilationInfo info("wasm", isolate, &zone);
+  const char* name = "";
+  if (function.name_offset > 0) {
+    const byte* ptr = module_env->module->module_start + function.name_offset;
+    name = reinterpret_cast<const char*>(ptr);
+  }
+  CompilationInfo info(name, isolate, &zone);
   info.set_output_code_kind(Code::WASM_FUNCTION);
   Handle<Code> code =
       compiler::Pipeline::GenerateCodeForTesting(&info, descriptor, &graph);
@@ -346,11 +351,6 @@ Handle<Code> CompileFunction(ErrorThrower& thrower,
   if (!code.is_null() && FLAG_print_opt_code) {
     static const int kBufferSize = 128;
     char buffer[kBufferSize];
-    const char* name = "";
-    if (function.name_offset > 0) {
-      const byte* ptr = module_env->module->module_start + function.name_offset;
-      name = reinterpret_cast<const char*>(ptr);
-    }
     snprintf(buffer, kBufferSize, "WASM function #%d:%s", index, name);
     OFStream os(stdout);
     code->Disassemble(buffer, os);
