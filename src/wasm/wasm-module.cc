@@ -14,13 +14,13 @@
 #include "src/compiler/pipeline.h"
 #include "src/compiler/machine-operator.h"
 
-// For pipeline optimization
 #include "src/compiler/branch-elimination.h"
 #include "src/compiler/change-lowering.h"
 #include "src/compiler/common-operator-reducer.h"
 #include "src/compiler/control-flow-optimizer.h"
 #include "src/compiler/dead-code-elimination.h"
 #include "src/compiler/graph-trimmer.h"
+#include "src/compiler/instruction-selector.h"
 #include "src/compiler/js-context-relaxation.h"
 #include "src/compiler/js-generic-lowering.h"
 #include "src/compiler/machine-operator-reducer.h"
@@ -207,7 +207,9 @@ Handle<Code> CompileFunction(ErrorThrower& thrower,
   Zone zone;
   compiler::Graph graph(&zone);
   compiler::CommonOperatorBuilder common(&zone);
-  compiler::MachineOperatorBuilder machine(&zone);
+  compiler::MachineOperatorBuilder machine(
+      &zone, compiler::kMachPtr,
+      compiler::InstructionSelector::SupportedMachineOperatorFlags());
   compiler::JSGraph jsgraph(isolate, &graph, &common, nullptr, nullptr,
                             &machine);
   TreeResult result = BuildTFGraph(
