@@ -14,6 +14,9 @@
 #include "src/compiler/js-graph.h"
 #include "src/compiler/pipeline.h"
 #include "src/compiler/machine-operator.h"
+#include "src/factory.h"
+#include "src/log-inl.h"
+#include "src/profiler/cpu-profiler.h"
 
 // For pipeline optimization
 #include "src/compiler/branch-elimination.h"
@@ -177,14 +180,13 @@ const int kWasmGlobalsArrayBuffer = 3;
 Handle<Code> CompileFunction(ErrorThrower& thrower, Isolate* isolate,
                              ModuleEnv* module_env,
                              const WasmFunction& function, int index) {
+  const char* name = function.name_offset > 0
+                     ? module_env->module->GetName(function.name_offset)
+                     : "wasm";
   if (FLAG_trace_wasm_compiler || FLAG_trace_wasm_decode_time) {
     // TODO(titzer): clean me up a bit.
     OFStream os(stdout);
-    os << "Compiling WASM function #" << index << ":";
-    if (function.name_offset > 0) {
-      os << module_env->module->GetName(function.name_offset);
-    }
-    os << std::endl;
+    os << "Compiling WASM function #" << index << ":" << name << std::endl;
   }
   // Initialize the function environment for decoding.
   FunctionEnv env;
@@ -219,7 +221,7 @@ Handle<Code> CompileFunction(ErrorThrower& thrower, Isolate* isolate,
     // Add the function as another context for the exception
     char buffer[256];
     snprintf(buffer, 256, "Compiling WASM function #%d:%s failed:", index,
-             module_env->module->GetName(function.name_offset));
+             name);
     thrower.Failed(buffer, result);
     return Handle<Code>::null();
   }
@@ -331,21 +333,36 @@ Handle<Code> CompileFunction(ErrorThrower& thrower, Isolate* isolate,
   // Run the compiler pipeline to generate machine code.
   compiler::CallDescriptor* descriptor = const_cast<compiler::CallDescriptor*>(
       module_env->GetWasmCallDescriptor(&zone, function.sig));
-  CompilationInfo info("wasm", isolate, &zone);
+  CompilationInfo info(name, isolate, &zone);
   info.set_output_code_kind(Code::WASM_FUNCTION);
   Handle<Code> code =
       compiler::Pipeline::GenerateCodeForTesting(&info, descriptor, &graph);
+
+  if (info.isolate()->logger()->is_logging_code_events() ||
+      info.isolate()->cpu_profiler()->is_profiling()) {
+    const char* func_name = name;
+    static const int kBufferSize = 128;
+    char buffer[kBufferSize];
+    if (!(function.name_offset > 0)) {
+      snprintf(buffer, kBufferSize, "WASM_function_#%d", index);
+      func_name = buffer;
+    }
+    Handle<String> name_str =
+        isolate->factory()->NewStringFromAsciiChecked(func_name);
+    Handle<String> script_str =
+        isolate->factory()->NewStringFromAsciiChecked("(WASM)");
+    Handle<SharedFunctionInfo> shared =
+        isolate->factory()->NewSharedFunctionInfo(name_str, code);
+    PROFILE(info.isolate(),
+            CodeCreateEvent(Logger::FUNCTION_TAG, *code, *shared, &info,
+                            *script_str, 0, 0));
+  }
 
 #ifdef ENABLE_DISASSEMBLER
   // Disassemble the code for debugging.
   if (!code.is_null() && FLAG_print_opt_code) {
     static const int kBufferSize = 128;
     char buffer[kBufferSize];
-    const char* name = "";
-    if (function.name_offset > 0) {
-      const byte* ptr = module_env->module->module_start + function.name_offset;
-      name = reinterpret_cast<const char*>(ptr);
-    }
     snprintf(buffer, kBufferSize, "WASM function #%d:%s", index, name);
     OFStream os(stdout);
     code->Disassemble(buffer, os);
