@@ -17,6 +17,8 @@
 #include "src/compiler/source-position.h"
 #include "src/compiler/graph-visualizer.h"
 #include "src/compiler/typer.h"
+#include "src/log-inl.h"
+#include "src/profiler/cpu-profiler.h"
 
 namespace v8 {
 namespace internal {
@@ -95,6 +97,16 @@ Handle<JSFunction> CompileJSToWasmWrapper(Isolate* isolate,
     Handle<Code> code = compiler::Pipeline::GenerateCodeForTesting(
         &info, incoming, &graph, nullptr);
 
+  if (info.isolate()->logger()->is_logging_code_events() ||
+      info.isolate()->cpu_profiler()->is_profiling()) {
+    Handle<String> name_str =
+        isolate->factory()->NewStringFromAsciiChecked("js-to-wasm");
+    Handle<SharedFunctionInfo> shared =
+        isolate->factory()->NewSharedFunctionInfo(name_str, code, false);
+    PROFILE(info.isolate(),
+            CodeCreateEvent(Logger::FUNCTION_TAG, *code, *shared, &info,
+                            *name_str, 0, 0));
+  }
 #ifdef ENABLE_DISASSEMBLER
     // Disassemble the wrapper code for debugging.
     if (!code.is_null() && FLAG_print_opt_code) {
@@ -173,6 +185,16 @@ Handle<Code> CompileWasmToJSWrapper(Isolate* isolate,
     info.set_output_code_kind(Code::WASM_FUNCTION);
     code = compiler::Pipeline::GenerateCodeForTesting(&info, incoming, &graph,
                                                       nullptr);
+  if (info.isolate()->logger()->is_logging_code_events() ||
+      info.isolate()->cpu_profiler()->is_profiling()) {
+    Handle<String> name_str =
+        isolate->factory()->NewStringFromAsciiChecked("wasm-to-js");
+    Handle<SharedFunctionInfo> shared =
+        isolate->factory()->NewSharedFunctionInfo(name_str, code, false);
+    PROFILE(info.isolate(),
+            CodeCreateEvent(Logger::FUNCTION_TAG, *code, *shared, &info,
+                            *name_str, 0, 0));
+  }
 
 #ifdef ENABLE_DISASSEMBLER
     // Disassemble the wrapper code for debugging.
