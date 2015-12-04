@@ -352,7 +352,7 @@ Handle<Code> CompileFunction(ErrorThrower& thrower, Isolate* isolate,
     Handle<String> script_str =
         isolate->factory()->NewStringFromAsciiChecked("(WASM)");
     Handle<SharedFunctionInfo> shared =
-        isolate->factory()->NewSharedFunctionInfo(name_str, code);
+        isolate->factory()->NewSharedFunctionInfo(name_str, code, false);
     PROFILE(info.isolate(),
             CodeCreateEvent(Logger::FUNCTION_TAG, *code, *shared, &info,
                             *script_str, 0, 0));

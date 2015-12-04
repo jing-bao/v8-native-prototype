@@ -101,7 +101,7 @@ Handle<JSFunction> CompileJSToWasmWrapper(Isolate* isolate, ModuleEnv* module,
     Handle<String> name_str =
         isolate->factory()->NewStringFromAsciiChecked("js-to-wasm");
     Handle<SharedFunctionInfo> shared =
-        isolate->factory()->NewSharedFunctionInfo(name_str, code);
+        isolate->factory()->NewSharedFunctionInfo(name_str, code, false);
     PROFILE(info.isolate(),
             CodeCreateEvent(Logger::FUNCTION_TAG, *code, *shared, &info,
                             *name_str, 0, 0));
@@ -188,7 +188,7 @@ Handle<Code> CompileWasmToJSWrapper(Isolate* isolate, ModuleEnv* module,
     Handle<String> name_str =
         isolate->factory()->NewStringFromAsciiChecked("wasm-to-js");
     Handle<SharedFunctionInfo> shared =
-        isolate->factory()->NewSharedFunctionInfo(name_str, code);
+        isolate->factory()->NewSharedFunctionInfo(name_str, code, false);
     PROFILE(info.isolate(),
             CodeCreateEvent(Logger::FUNCTION_TAG, *code, *shared, &info,
                             *name_str, 0, 0));
