@@ -333,20 +333,20 @@ Handle<Code> CompileFunction(ErrorThrower& thrower, Isolate* isolate,
   // Run the compiler pipeline to generate machine code.
   compiler::CallDescriptor* descriptor = const_cast<compiler::CallDescriptor*>(
       module_env->GetWasmCallDescriptor(&zone, function.sig));
-  CompilationInfo info(name, isolate, &zone);
+  const char* func_name = name;
+  static const int kBufferSize = 128;
+  char buffer[kBufferSize];
+  if (!(function.name_offset > 0)) {
+    snprintf(buffer, kBufferSize, "WASM_function_#%d", index);
+    func_name = buffer;
+  }
+  CompilationInfo info(func_name, isolate, &zone);
   info.set_output_code_kind(Code::WASM_FUNCTION);
   Handle<Code> code =
       compiler::Pipeline::GenerateCodeForTesting(&info, descriptor, &graph);
 
   if (info.isolate()->logger()->is_logging_code_events() ||
       info.isolate()->cpu_profiler()->is_profiling()) {
-    const char* func_name = name;
-    static const int kBufferSize = 128;
-    char buffer[kBufferSize];
-    if (!(function.name_offset > 0)) {
-      snprintf(buffer, kBufferSize, "WASM_function_#%d", index);
-      func_name = buffer;
-    }
     Handle<String> name_str =
         isolate->factory()->NewStringFromAsciiChecked(func_name);
     Handle<String> script_str =
