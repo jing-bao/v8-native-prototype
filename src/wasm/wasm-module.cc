@@ -15,6 +15,22 @@
 #include "src/compiler/pipeline.h"
 #include "src/compiler/machine-operator.h"
 
+// For pipeline optimization
+#include "src/compiler/branch-elimination.h"
+#include "src/compiler/change-lowering.h"
+#include "src/compiler/common-operator-reducer.h"
+#include "src/compiler/control-flow-optimizer.h"
+#include "src/compiler/dead-code-elimination.h"
+#include "src/compiler/graph-trimmer.h"
+#include "src/compiler/js-context-relaxation.h"
+#include "src/compiler/js-generic-lowering.h"
+#include "src/compiler/machine-operator-reducer.h"
+#include "src/compiler/select-lowering.h"
+#include "src/compiler/simplified-operator-reducer.h"
+#include "src/compiler/tail-call-optimization.h"
+#include "src/compiler/value-numbering-reducer.h"
+#include "src/compiler/zone-pool.h"
+
 #include "src/wasm/ast-decoder.h"
 #include "src/wasm/tf-builder.h"
 #include "src/wasm/module-decoder.h"
@@ -206,6 +222,110 @@ Handle<Code> CompileFunction(ErrorThrower& thrower, Isolate* isolate,
              module_env->module->GetName(function.name_offset));
     thrower.Failed(buffer, result);
     return Handle<Code>::null();
+  }
+
+  // Run pipeline optimization. Begin from machine-level and common operators.
+  // TODO: Ignore unnecessary or redundant reducers.
+  compiler::ZonePool zone_pool;
+
+  // SimplifiedLoweringPhase
+  {
+    compiler::ZonePool::Scope zone_scope(&zone_pool);
+    Zone* temp_zone = zone_scope.zone();
+    compiler::GraphReducer graph_reducer(temp_zone, &graph, jsgraph.Dead());
+    // compiler::SimplifiedLowering lowering(&jsgraph(), temp_zone,
+    //                                       data->source_positions());
+    // lowering.LowerAllNodes();
+    compiler::DeadCodeElimination dead_code_elimination(&graph_reducer,
+                                                        &graph, &common);
+    compiler::SimplifiedOperatorReducer simple_reducer(&jsgraph);
+    compiler::ValueNumberingReducer value_numbering(temp_zone);
+    compiler::MachineOperatorReducer machine_reducer(&jsgraph);
+    compiler::CommonOperatorReducer common_reducer(&graph_reducer, &graph,
+                                                   &common, &machine);
+    graph_reducer.AddReducer(&dead_code_elimination);
+    graph_reducer.AddReducer(&simple_reducer);
+    graph_reducer.AddReducer(&value_numbering);
+    graph_reducer.AddReducer(&machine_reducer);
+    graph_reducer.AddReducer(&common_reducer);
+    graph_reducer.ReduceGraph();
+  }
+
+  // BranchEliminationPhase
+  {
+    compiler::ZonePool::Scope zone_scope(&zone_pool);
+    Zone* temp_zone = zone_scope.zone();
+    compiler::GraphReducer graph_reducer(temp_zone, &graph, jsgraph.Dead());
+    compiler::BranchElimination branch_condition_elimination(&graph_reducer,
+                                                             &jsgraph, temp_zone);
+    compiler::DeadCodeElimination dead_code_elimination(&graph_reducer,
+                                                        &graph, &common);
+    graph_reducer.AddReducer(&branch_condition_elimination);
+    graph_reducer.AddReducer(&dead_code_elimination);
+    graph_reducer.ReduceGraph();
+  }
+
+  // ControlFlowOptimizationPhase
+  if (FLAG_turbo_cf_optimization) {
+    compiler::ZonePool::Scope zone_scope(&zone_pool);
+    Zone* temp_zone = zone_scope.zone();
+    compiler::ControlFlowOptimizer optimizer(&graph, &common, &machine,
+                                             temp_zone);
+    optimizer.Optimize();
+  }
+
+  // ChangeLoweringPhase
+  {
+    compiler::ZonePool::Scope zone_scope(&zone_pool);
+    Zone* temp_zone = zone_scope.zone();
+    compiler::GraphReducer graph_reducer(temp_zone, &graph, jsgraph.Dead());
+    compiler::DeadCodeElimination dead_code_elimination(&graph_reducer,
+                                                        &graph, &common);
+    compiler::SimplifiedOperatorReducer simple_reducer(&jsgraph);
+    compiler::ValueNumberingReducer value_numbering(temp_zone);
+    compiler::ChangeLowering lowering(&jsgraph);
+    compiler::MachineOperatorReducer machine_reducer(&jsgraph);
+    compiler::CommonOperatorReducer common_reducer(&graph_reducer, &graph,
+                                                   &common, &machine);
+    graph_reducer.AddReducer(&dead_code_elimination);
+    graph_reducer.AddReducer(&simple_reducer);
+    graph_reducer.AddReducer(&value_numbering);
+    graph_reducer.AddReducer(&lowering);
+    graph_reducer.AddReducer(&machine_reducer);
+    graph_reducer.AddReducer(&common_reducer);
+    graph_reducer.ReduceGraph();
+  }
+
+  // GenericLoweringPhase
+  {
+    compiler::ZonePool::Scope zone_scope(&zone_pool);
+    Zone* temp_zone = zone_scope.zone();
+    compiler::GraphReducer graph_reducer(temp_zone, &graph, jsgraph.Dead());
+    compiler::JSContextRelaxation context_relaxing;
+    compiler::DeadCodeElimination dead_code_elimination(&graph_reducer,
+                                                        &graph, &common);
+    compiler::CommonOperatorReducer common_reducer(&graph_reducer, &graph,
+                                                   &common, &machine);
+    compiler::JSGenericLowering generic_lowering(true, &jsgraph);
+    compiler::SelectLowering select_lowering(&graph, &common);
+    compiler::TailCallOptimization tco(&common, &graph);
+    graph_reducer.AddReducer(&context_relaxing);
+    graph_reducer.AddReducer(&dead_code_elimination);
+    graph_reducer.AddReducer(&common_reducer);
+    graph_reducer.AddReducer(&generic_lowering);
+    graph_reducer.AddReducer(&select_lowering);
+    graph_reducer.AddReducer(&tco);
+    graph_reducer.ReduceGraph();
+  }
+
+  // LateGraphTrimmingPhase
+  {
+    compiler::ZonePool::Scope zone_scope(&zone_pool);
+    Zone* temp_zone = zone_scope.zone();
+    compiler::GraphTrimmer trimmer(temp_zone, &graph);
+    compiler::NodeVector roots(temp_zone);
+    jsgraph.GetCachedNodes(&roots);
+    trimmer.TrimGraph(roots.begin(), roots.end());
   }
 
   // Run the compiler pipeline to generate machine code.
