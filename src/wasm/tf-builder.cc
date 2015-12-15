@@ -335,7 +335,7 @@ TFNode* TFBuilder::Binop(WasmOpcode opcode, TFNode* left, TFNode* right) {
       op = m->Int32Mul();
       break;
     case kExprI32DivS: {
-      trap->ZeroCheck32(kTrapDivByZero, right);
+      /*trap->ZeroCheck32(kTrapDivByZero, right);
       TFNode* before = *control;
       TFNode* denom_is_m1;
       TFNode* denom_is_not_m1;
@@ -349,15 +349,15 @@ TFNode* TFBuilder::Binop(WasmOpcode opcode, TFNode* left, TFNode* right) {
                                            denom_is_not_m1, *control);
       } else {
         *control = before;
-      }
+      }*/
       return graph->graph()->NewNode(m->Int32Div(), left, right, *control);
     }
     case kExprI32DivU:
       op = m->Uint32Div();
-      return graph->graph()->NewNode(op, left, right,
-                                     trap->ZeroCheck32(kTrapDivByZero, right));
+      return graph->graph()->NewNode(op, left, right, *control);
+                                    // trap->ZeroCheck32(kTrapDivByZero, right));
     case kExprI32RemS: {
-      trap->ZeroCheck32(kTrapRemByZero, right);
+      /*trap->ZeroCheck32(kTrapRemByZero, right);
       compiler::Diamond d(
           graph->graph(), graph->common(),
           graph->graph()->NewNode(graph->machine()->Word32Equal(), right,
@@ -366,12 +366,14 @@ TFNode* TFBuilder::Binop(WasmOpcode opcode, TFNode* left, TFNode* right) {
       TFNode* rem =
           graph->graph()->NewNode(m->Int32Mod(), left, right, d.if_false);
 
-      return d.Phi(kMachInt32, graph->Int32Constant(0), rem);
+      return d.Phi(kMachInt32, graph->Int32Constant(0), rem);*/
+      op = m->Int32Mod();
+      return graph->graph()->NewNode(op, left, right, *control);
     }
     case kExprI32RemU:
       op = m->Uint32Mod();
-      return graph->graph()->NewNode(op, left, right,
-                                     trap->ZeroCheck32(kTrapRemByZero, right));
+      return graph->graph()->NewNode(op, left, right, *control);
+                                    // trap->ZeroCheck32(kTrapRemByZero, right));
     case kExprI32And:
       op = m->Word32And();
       break;
