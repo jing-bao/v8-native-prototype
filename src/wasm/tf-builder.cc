@@ -1179,11 +1179,11 @@ TFNode* TFBuilder::CallIndirect(uint32_t index, TFNode** args) {
 
   // Bounds check the index.
   int table_size = static_cast<int>(module->FunctionTableSize());
-  {
+  /*{
     TFNode* size = Int32Constant(static_cast<int>(table_size));
     TFNode* in_bounds = g->NewNode(machine->Uint32LessThan(), key, size);
     trap->AddTrapIfFalse(kTrapFuncInvalid, in_bounds);
-  }
+  }*/
 
   // Load signature from the table and check.
   // The table is a FixedArray; signatures are encoded as SMIs.
@@ -1191,7 +1191,7 @@ TFNode* TFBuilder::CallIndirect(uint32_t index, TFNode** args) {
   compiler::ElementAccess access =
       compiler::AccessBuilder::ForFixedArrayElement();
   const int fixed_offset = access.header_size - access.tag();
-  {
+  /*{
     TFNode* load_sig =
         g->NewNode(machine->Load(kMachAnyTagged), table,
                    g->NewNode(machine->Int32Add(),
@@ -1202,7 +1202,7 @@ TFNode* TFBuilder::CallIndirect(uint32_t index, TFNode** args) {
     TFNode* sig_match =
         g->NewNode(machine->WordEqual(), load_sig, graph->SmiConstant(index));
     trap->AddTrapIfFalse(kTrapFuncSigMismatch, sig_match);
-  }
+  }*/
 
   // Load code object from the table.
   int offset = fixed_offset + kPointerSize * table_size;
