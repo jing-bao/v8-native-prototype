@@ -1496,7 +1496,7 @@ TFNode* TFBuilder::LoadMem(LocalType type, MachineType memtype, TFNode* index,
     load = g->NewNode(op, MemBuffer(0), index, MemSize(0), *effect, *control);
   } else {
     // WASM semantics throw on OOB. Introduce explicit bounds check.
-    BoundsCheckMem(memtype, index, offset);
+    // BoundsCheckMem(memtype, index, offset);
     load = g->NewNode(graph->machine()->Load(memtype), MemBuffer(offset), index,
                       *effect, *control);
   }
@@ -1531,7 +1531,7 @@ TFNode* TFBuilder::StoreMem(MachineType memtype, TFNode* index, uint32_t offset,
                                     *effect, *control);
   } else {
     // WASM semantics throw on OOB. Introduce explicit bounds check.
-    BoundsCheckMem(memtype, index, offset);
+    // BoundsCheckMem(memtype, index, offset);
     compiler::StoreRepresentation rep(memtype, compiler::kNoWriteBarrier);
     store =
         graph->graph()->NewNode(graph->machine()->Store(rep), MemBuffer(offset),
