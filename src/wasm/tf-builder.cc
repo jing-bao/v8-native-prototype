@@ -1497,8 +1497,18 @@ TFNode* TFBuilder::LoadMem(LocalType type, MachineType memtype, TFNode* index,
   } else {
     // WASM semantics throw on OOB. Introduce explicit bounds check.
     // BoundsCheckMem(memtype, index, offset);
-    load = g->NewNode(graph->machine()->Load(memtype), MemBuffer(offset), index,
-                      *effect, *control);
+    if (offset != 0) {
+      if (kPointerSize == 8) {
+        index = g->NewNode(graph->machine()->Int64Add(),
+                           g->NewNode(graph->machine()->ChangeInt32ToInt64(), index),
+                           graph->Int64Constant(offset));
+      } else {
+        index = g->NewNode(graph->machine()->Int32Add(), index,
+                           graph->Int32Constant(offset));
+      }
+    }
+    load = g->NewNode(graph->machine()->Load(memtype), MemBuffer(0), index,
+                           *effect, *control);
   }
 
   *effect = load;
@@ -1533,9 +1543,19 @@ TFNode* TFBuilder::StoreMem(MachineType memtype, TFNode* index, uint32_t offset,
     // WASM semantics throw on OOB. Introduce explicit bounds check.
     // BoundsCheckMem(memtype, index, offset);
     compiler::StoreRepresentation rep(memtype, compiler::kNoWriteBarrier);
-    store =
-        graph->graph()->NewNode(graph->machine()->Store(rep), MemBuffer(offset),
-                                index, val, *effect, *control);
+    compiler::Graph* g = graph->graph();
+    if (offset != 0) {
+      if (kPointerSize == 8) {
+        index = g->NewNode(graph->machine()->Int64Add(),
+                           g->NewNode(graph->machine()->ChangeInt32ToInt64(), index),
+                           graph->Int64Constant(offset));
+      } else {
+        index = g->NewNode(graph->machine()->Int32Add(), index,
+                           graph->Int32Constant(offset));
+      }
+    }
+    store = g->NewNode(graph->machine()->Store(rep), MemBuffer(0),
+                       index, val, *effect, *control);
   }
   *effect = store;
   return store;
