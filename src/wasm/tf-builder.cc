@@ -691,14 +691,16 @@ TFNode* TFBuilder::Unop(WasmOpcode opcode, TFNode* input) {
       op = m->TruncateFloat64ToFloat32();*/
       break;
     case kExprI32SConvertF32:
-      op = m->ChangeFloat32ToFloat64();  // TODO(titzer): two conversions
+      op = m->ChangeFloat32ToInt32();
+      /*op = m->ChangeFloat32ToFloat64();  // TODO(titzer): two conversions
       input = graph->graph()->NewNode(op, input);
-      op = m->ChangeFloat64ToInt32();
+      op = m->ChangeFloat64ToInt32();*/
       break;
     case kExprI32UConvertF32:
-      op = m->ChangeFloat32ToFloat64();  // TODO(titzer): two conversions
+      op = m->ChangeFloat32ToUint32();
+      /*op = m->ChangeFloat32ToFloat64();  // TODO(titzer): two conversions
       input = graph->graph()->NewNode(op, input);
-      op = m->ChangeFloat64ToUint32();
+      op = m->ChangeFloat64ToUint32();*/
       break;
     case kExprF64ConvertF32:
       op = m->ChangeFloat32ToFloat64();
